@@ -1,43 +1,85 @@
-# AI Planner API (Vector-based)
+# AI Planner API
 
-## 1. 설치 및 환경설정
+벡터 기반의 지능형 장소 추천 시스템
 
-### 1.1. Python 환경 준비
-- Python 3.8 이상 권장
-- 가상환경 사용 권장
+## 프로젝트 구조
 
+```
+recommand_place/
+├── app/
+│   ├── api/              # API 엔드포인트
+│   ├── core/             # 설정 및 상수
+│   ├── models/           # Pydantic 모델
+│   ├── services/         # 비즈니스 로직
+│   └── main.py          # 앱 진입점
+├── data/                 # 데이터 파일
+└── requirements.txt      # 의존성
+```
+
+## 설치 방법
+
+1. 가상환경 생성 및 활성화:
 ```bash
 python -m venv venv
-source venv/bin/activate  # (Windows: venv\Scripts\activate)
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
+```
+
+2. 의존성 설치:
+```bash
 pip install -r requirements.txt
 ```
 
-### 1.2. 필수 패키지 설치
-`requirements.txt` 예시:
+3. 환경변수 설정:
+`.env` 파일을 생성하고 다음 내용을 추가:
 ```
-fastapi
-uvicorn
-pandas
-numpy
-scikit-learn
-openai
-geopy
-python-dotenv
+OPENAI_API_KEY=your_api_key_here
 ```
 
-### 1.3. 환경 변수 설정
-- OpenAI API 키 필요:  
-  `.env` 파일 또는 환경변수로 `OPENAI_API_KEY` 등록
+## 실행 방법
 
 ```bash
-export OPENAI_API_KEY=sk-xxxxxx   # (Windows: set OPENAI_API_KEY=sk-xxxxxx)
+uvicorn app.main:app --reload
 ```
 
-- `final_store_db.csv` 파일이 `recommand_place/` 폴더에 있어야 합니다.
+서버가 시작되면 http://localhost:8000 에서 API를 사용할 수 있습니다.
+API 문서는 http://localhost:8000/docs 에서 확인할 수 있습니다.
 
----
+## API 엔드포인트
 
-## 2. 서버 실행
+### POST /api/v1/generate-plan-vector
+
+사용자들의 취향과 상황을 고려하여 최적의 장소를 추천합니다.
+
+요청 예시:
+```json
+{
+    "user1": {
+        "gender": "M",
+        "age": 26,
+        "preferences": {"vec_1": 0.1, ...}
+    },
+    "user2": {
+        "gender": "F",
+        "age": 26,
+        "preferences": {"vec_1": 0.1, ...}
+    },
+    "date": "2025-07-03",
+    "weather": "맑음",
+    "startTime": "13:00",
+    "endTime": "19:00",
+    "keywords": ["기념일", "로맨틱"]
+}
+```
+
+## 데이터 모델
+
+- `stores_with_preferences_vec.csv`: 가게 정보와 벡터
+- `w2v_activity_model.model`: Word2Vec 모델
+
+## 라이선스
+
+MIT License
 
 ```bash
 cd recommand_place
