@@ -27,9 +27,7 @@ CONFIG = {
     "svd_persona_index_path": os.path.join(BASE_DIR, "svd_persona_index.pkl"),
     "svd_item_index_path": os.path.join(BASE_DIR, "svd_item_index.pkl"),
     "w2v_model_path": os.path.join(BASE_DIR, "w2v_activity_model.model"),
-    "store_db_path": os.path.join(BASE_DIR, "final_store_db.csv"),
-    "llm_model_id": "upstage/SOLAR-10.7B-Instruct-v1.0",
-}
+    "store_db_path": os.path.join(BASE_DIR, "final_store_db.csv"),}
 
 def load_all_assets():
     """프로젝트에 필요한 모든 자산을 로드하는 함수"""
