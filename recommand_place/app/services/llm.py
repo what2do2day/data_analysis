@@ -29,7 +29,7 @@ def call_llm(candidates: List[Dict], context: Dict) -> LLMRecommendation:
 """
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             response_format={"type": "json_object"},
             messages=[{"role": "user", "content": prompt}]
         )

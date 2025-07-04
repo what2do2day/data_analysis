@@ -1,2 +1,4 @@
 recommand_place/.env
 recommand_place/venv/
+.env
+__pycache__/
