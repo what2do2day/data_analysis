@@ -92,7 +92,6 @@ class QuestionResponse(BaseModel):
 # Recommend Place API 스키마
 class UserPreference(BaseModel):
     gender: str = Field(..., description="성별 (M/F)")
-    age: int = Field(..., description="나이")
     preferences: Dict[str, float] = Field(..., description="50차원의 취향 벡터")
 
 class PlannerRequest(BaseModel):

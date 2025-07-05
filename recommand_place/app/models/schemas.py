@@ -5,7 +5,6 @@ from typing import List, Dict
 
 class UserPreference(BaseModel):
     gender: str
-    age: int
     preferences: Dict[str, float] = Field(..., description="50차원의 취향 벡터")
 
 class PlannerRequest(BaseModel):
@@ -22,12 +21,10 @@ class PlannerRequest(BaseModel):
             "example": {
                 "user1": {
                     "gender": "M",
-                    "age": 26,
                     "preferences": {f"vec_{i}": round(0.1 * ((i-1)%10+1), 1) for i in range(1, 51)}
                 },
                 "user2": {
                     "gender": "F",
-                    "age": 26,
                     "preferences": {f"vec_{i}": round(0.1 * ((i-1)%10+1), 1) for i in range(1, 51)}
                 },
                 "date": "2025-07-03",
