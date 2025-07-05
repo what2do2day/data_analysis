@@ -32,8 +32,22 @@ async def generate_plan(request: PlannerRequest):
     
     # 각 시간대별로 추천 생성
     for slot in time_slots:
+        # 첫 번째 슬롯 여부 확인
+        is_first_slot = slot.get('is_first_slot', False)
+        
+        # 중심 위치 설정 (첫 번째 슬롯이 아닌 경우)
+        center_location = None
+        if not is_first_slot and store_service.first_location:
+            center_location = store_service.first_location
+        
         # 해당 시간대에 맞는 후보 가게들 가져오기
-        candidates = store_service.get_candidate_stores(group_vector, slot['category'], request.keywords)
+        candidates = store_service.get_candidate_stores(
+            group_vector, 
+            slot['category'], 
+            request.keywords,
+            is_first_slot=is_first_slot,
+            center_location=center_location
+        )
         
         if not candidates:
             continue
