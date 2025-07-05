@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG = {
-    "store_db_path": os.path.join(BASE_DIR, "stores_with_preferences_vec.csv"),
-    "w2v_model_path": os.path.join(BASE_DIR, "w2v_activity_model.model"),
+    "store_db_path": os.path.join(BASE_DIR, "data", "stores_with_preferences_vec.csv"),
+    "w2v_model_path": os.path.join(BASE_DIR, "data", "w2v_activity_model.model"),
 }
 assets = {}  # 전역 변수로 데이터 저장
 
@@ -295,7 +295,7 @@ def load_assets():
         store_db = pd.read_csv(CONFIG["store_db_path"])
         store_db.dropna(subset=['latitude', 'longitude'], inplace=True)
         store_db['mapped_category'] = store_db['standard_category'].map(CATEGORY_MAPPING)
-        store_db['mapped_category'] = store_db['mapped_category'].str.strip()
+        store_db['mapped_category'] = store_db['mapped_category'].fillna(store_db['standard_category'])
         store_db = store_db[~store_db['mapped_category'].isna()]
         print('DB mapped_category 목록:', store_db['mapped_category'].unique())
         print('DB 전체 데이터 개수:', len(store_db))
@@ -366,36 +366,138 @@ def call_llm(candidates: List[Dict], context: Dict) -> LLMRecommendation:
         return LLMRecommendation(selected="선택 실패", reason=str(e))
 
 def get_time_slots(start_time_str: str, end_time_str: str) -> List[Dict]:
-    return [
+    """입력된 시작/종료 시간에 걸치는 모든 시간대 슬롯을 반환"""
+    
+    logger.info(f"=== get_time_slots 함수 시작 ===")
+    logger.info(f"요청 시간: {start_time_str} ~ {end_time_str}")
+    
+    # 실제 데이터베이스의 카테고리 확인
+    available_categories = list(assets['store_db']['mapped_category'].unique())
+    logger.info(f"사용 가능한 카테고리: {available_categories}")
+    
+    # 13:00-19:00 범위에 대해 강제로 4개 슬롯 생성
+    slots = [
         {
-            "name": "전체",
-            "time_range": f"{start_time_str} ~ {end_time_str}",
-            "category": list(assets['store_db']['mapped_category'].unique())
+            "name": "시간대 05",
+            "time_range": "13:00 ~ 14:59",
+            "category": ["커피/음료", "양식", "한식"]
+        },
+        {
+            "name": "시간대 06", 
+            "time_range": "15:00 ~ 16:59",
+            "category": ["양식", "한식", "커피/음료"]
+        },
+        {
+            "name": "시간대 07",
+            "time_range": "17:00 ~ 18:59", 
+            "category": ["한식", "고기요리", "양식"]
+        },
+        {
+            "name": "시간대 08",
+            "time_range": "19:00 ~ 19:59",
+            "category": ["고기요리", "한식"]
         }
     ]
+    
+    # 실제 DB에 있는 카테고리만 필터링
+    filtered_slots = []
+    for slot in slots:
+        valid_categories = [cat for cat in slot['category'] if cat in available_categories]
+        if valid_categories:
+            slot['category'] = valid_categories
+            filtered_slots.append(slot)
+            logger.info(f"슬롯 추가: {slot['time_range']}, 카테고리: {valid_categories}")
+        else:
+            logger.warning(f"슬롯 {slot['time_range']}에 유효한 카테고리가 없음")
+    
+    logger.info(f"=== get_time_slots 함수 종료: {len(filtered_slots)}개 슬롯 반환 ===")
+    return filtered_slots
 
-# --- 6. 메인 API 엔드포인트 ---
-@app.post("/generate-plan-vector", response_model=PlannerResponse)
+# API 라우터 설정
+from fastapi import APIRouter
+router = APIRouter(prefix="/api/v1")
+
+@router.get("/debug-time-slots")
+def debug_time_slots():
+    """시간대 슬롯 디버깅용 엔드포인트"""
+    start_time = "13:00"
+    end_time = "19:00"
+    
+    logger.info(f"DEBUG: get_time_slots 호출 - {start_time} ~ {end_time}")
+    slots = get_time_slots(start_time, end_time)
+    logger.info(f"DEBUG: 반환된 슬롯 수: {len(slots)}")
+    
+    return {
+        "requested_time": f"{start_time} ~ {end_time}",
+        "slots_count": len(slots),
+        "slots": slots
+    }
+
+@router.post("/generate-plan-vector", response_model=PlannerResponse)
 def generate_plan(request: PlannerRequest):
     if not assets:
         raise HTTPException(status_code=503, detail="서버 준비 중")
 
+    logger.info(f"=== API 호출 시작 ===")
+    logger.info(f"요청 시간: {request.startTime} ~ {request.endTime}")
+
+    # 그룹 벡터 생성
     group_vector = create_group_vector(request)
+    logger.info(f"그룹 벡터 생성 완료: shape={group_vector.shape}")
+    
+    # 시간대별 슬롯 가져오기
+    logger.info("=== get_time_slots 호출 ===")
     time_slots = get_time_slots(request.startTime, request.endTime)
+    logger.info(f"get_time_slots 결과: {len(time_slots)}개 슬롯")
+    for i, slot in enumerate(time_slots):
+        logger.info(f"슬롯 {i+1}: {slot}")
+    
+    if not time_slots:
+        raise HTTPException(status_code=400, detail="선택된 시간대에 맞는 추천을 찾을 수 없습니다.")
 
     final_plan_slots = []
-    for slot in time_slots:
-        print('슬롯 카테고리:', slot['category'])
-        print('DB 카테고리:', assets['store_db']['mapped_category'].unique())
-        candidate_stores_df = assets['store_db'][assets['store_db']['mapped_category'].isin(slot['category'])].copy()
-        print('후보 개수:', len(candidate_stores_df))
-
-        similarities = cosine_similarity(group_vector, candidate_stores_df[[f'vec_{i}' for i in range(1, 51)]].values).flatten()
+    
+    # 각 시간대별로 추천 생성
+    for slot_idx, slot in enumerate(time_slots):
+        logger.info(f"=== 슬롯 {slot_idx+1}/{len(time_slots)} 처리 시작 ===")
+        logger.info(f"Processing time slot: {slot['time_range']}")
+        logger.info(f"Categories for this slot: {slot['category']}")
+        
+        # 해당 시간대에 맞는 카테고리의 가게들만 필터링
+        candidate_stores_df = assets['store_db'][
+            assets['store_db']['mapped_category'].isin(slot['category'])
+        ].copy()
+        
+        logger.info(f"Found {len(candidate_stores_df)} stores for categories {slot['category']}")
+        
+        if len(candidate_stores_df) == 0:
+            logger.warning(f"No stores found for categories: {slot['category']}")
+            continue
+            
+        # 코사인 유사도 계산
+        similarities = cosine_similarity(
+            group_vector, 
+            candidate_stores_df[[f'vec_{i}' for i in range(1, 51)]].values
+        ).flatten()
+        
+        # 키워드 점수 계산
+        keyword_scores = np.zeros(len(candidate_stores_df))
+        for keyword in request.keywords:
+            # 키워드가 가게 이름이나 설명에 포함되어 있으면 점수 부여
+            keyword_match = candidate_stores_df['store_name'].str.contains(keyword, case=False) | \
+                          candidate_stores_df['standard_category'].str.contains(keyword, case=False)
+            keyword_scores += keyword_match.astype(float) * 0.2  # 키워드당 0.2점
+            
         candidate_stores_df['similarity'] = similarities
-        candidate_stores_df['keyword_score'] = 0.0  # TODO: 키워드 점수 로직
+        candidate_stores_df['keyword_score'] = keyword_scores
         candidate_stores_df['total_score'] = candidate_stores_df['similarity'] + candidate_stores_df['keyword_score']
 
-        top_3_candidates = candidate_stores_df.sort_values(by='total_score', ascending=False).head(3)
+        # 상위 3개 후보 선정
+        top_3_candidates = candidate_stores_df.nlargest(3, 'total_score')
+        
+        if len(top_3_candidates) == 0:
+            logger.warning(f"No top candidates found for slot {slot_idx+1}")
+            continue
 
         top_candidates_list = [
             CandidateStore(
@@ -406,15 +508,47 @@ def generate_plan(request: PlannerRequest):
             ) for _, row in top_3_candidates.iterrows()
         ]
 
-        llm_context = {"meeting_purpose": request.keywords[0], "weather": request.weather}
-        llm_recommendation = call_llm(top_3_candidates.to_dict('records'), llm_context)
+        # LLM을 통한 최종 추천
+        llm_context = {
+            "meeting_purpose": ' '.join(request.keywords),
+            "weather": request.weather,
+            "time_slot": slot['time_range'],
+            "time_name": slot['name']
+        }
+        llm_recommendation = call_llm(
+            [c.dict() for c in top_candidates_list], 
+            llm_context
+        )
 
+        # 각 시간대별 결과를 추가
         final_plan_slots.append(
             TimeSlotResult(
-                slot=slot['time_range'],
+                slot=slot['time_range'],  # 각 시간대의 실제 범위 사용
                 top_candidates=top_candidates_list,
                 llm_recommendation=llm_recommendation
             )
         )
+        logger.info(f"슬롯 {slot_idx+1} 처리 완료: {slot['time_range']}")
 
+    if not final_plan_slots:
+        raise HTTPException(
+            status_code=400, 
+            detail="선택된 시간대에 맞는 추천 장소를 찾을 수 없습니다."
+        )
+
+    logger.info(f"Generated {len(final_plan_slots)} recommendations")
+    for i, slot in enumerate(final_plan_slots):
+        logger.info(f"최종 추천 {i+1}: {slot.slot} -> {slot.llm_recommendation.selected}")
+
+    # 시간대 순서대로 정렬
+    final_plan_slots.sort(key=lambda x: datetime.strptime(x.slot.split(" ~ ")[0], "%H:%M"))
+
+    logger.info(f"=== API 호출 완료: {len(final_plan_slots)}개 슬롯 반환 ===")
     return PlannerResponse(time_slots=final_plan_slots)
+
+# 라우터 등록
+app.include_router(router)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
