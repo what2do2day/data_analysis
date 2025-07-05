@@ -1,0 +1,30 @@
+# 서버 배포용 통합 의존성 파일
+# API Gateway + 3개 서비스 모든 의존성 포함
+
+# 핵심 웹 프레임워크
+fastapi==0.109.2
+uvicorn==0.27.1
+pydantic==2.6.1
+python-multipart==0.0.9
+
+# API Gateway용 HTTP 클라이언트
+httpx==0.27.0
+
+# 환경 변수 관리
+python-dotenv==1.0.1
+
+# AI/ML 관련 (OpenAI API, 데이터 처리)
+openai==1.3.0
+pandas>=1.3.0
+numpy>=1.21.0
+scikit-learn>=0.24.0
+gensim>=4.1.0
+geopy>=2.2.0
+
+# 딥러닝 관련 (Text AI용)
+torch>=2.0.0
+transformers>=4.30.0
+
+# 기타 유틸리티
+requests>=2.25.0
+aiofiles>=0.7.0 
